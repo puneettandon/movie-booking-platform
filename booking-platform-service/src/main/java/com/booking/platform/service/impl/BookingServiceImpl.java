@@ -10,6 +10,9 @@ import com.booking.platform.enums.BookingStatus;
 import com.booking.platform.enums.SeatAvailabilityStatus;
 import com.booking.platform.exception.BadRequestException;
 import com.booking.platform.exception.ResourceNotFoundException;
+import com.booking.platform.kafka.publisher.BookingEventPublisher;
+import com.booking.platform.model.BookingEvent;
+import com.booking.platform.model.BookingEventType;
 import com.booking.platform.repository.BookingRepository;
 import com.booking.platform.repository.BookingSeatRepository;
 import com.booking.platform.repository.ShowRepository;
@@ -36,6 +39,7 @@ public class BookingServiceImpl implements BookingService {
     private final BookingRepository bookingRepository;
     private final BookingSeatRepository bookingSeatRepository;
     private final PricingService pricingService;
+    private final BookingEventPublisher bookingEventPublisher;
 
     @Override
     @Transactional
@@ -97,6 +101,10 @@ public class BookingServiceImpl implements BookingService {
             bookingSeatRepository.save(bookingSeat);
         }
 
+        bookingEventPublisher.publishBookingEvent(
+                buildBookingEvent(savedBooking, BookingEventType.BOOKING_CONFIRMED, request.getSeatNumbers())
+        );
+
         return BookingResponseDto.builder()
                 .bookingReference(savedBooking.getBookingReference())
                 .status(savedBooking.getStatus())
@@ -106,5 +114,22 @@ public class BookingServiceImpl implements BookingService {
                 .discountAmount(discountAmount)
                 .finalAmount(finalAmount)
                 .build();
+    }
+
+    private BookingEvent buildBookingEvent(Booking booking, BookingEventType eventType,
+                                           List<String> seatNumbers) {
+        return new BookingEvent(
+                eventType,
+                booking.getId().toString(),
+                booking.getUserId().toString(),
+                booking.getBookingReference(),
+                booking.getShow().getMovie().getTitle(),
+                booking.getShow().getScreen().getTheatre().getName(),
+                booking.getShow().getScreen().getName(),
+                booking.getShow().getStartTime(),
+                seatNumbers,
+                booking.getTotalAmount(),
+                java.time.LocalDateTime.now()
+        );
     }
 }
